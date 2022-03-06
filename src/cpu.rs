@@ -64,9 +64,24 @@ enum JumpTest {
     Always
 }
 
+enum LoadByteTarget {
+    A, B, C, D, E, H, L, HLI
+}
+enum LoadByteSource {
+    A, B, C, D, E, H, L, D8, HLI
+}
+enum LoadType {
+  Byte(LoadByteTarget, LoadByteSource),
+}
+
+enum StackTarget { BC, DE }
+
 enum Instruction {
     ADD(ArithmeticTarget),
     JP(JumpTest),
+    LD(LoadType),
+    PUSH(StackTarget),
+    POP(StackTarget)
 }
 
 impl Instruction {
@@ -105,11 +120,15 @@ impl MemoryBus {
     fn read_byte(&self, address: u16) -> u8 {
         self.memory[address as usize]
     }
+    fn write_byte(&self, addr: u16, byte: u8) {
+        self.memory[addr as usize] = byte
+    }
 }
 
 struct CPU { 
     registers: Registers,
     pc: u16,
+    sp: u16,
     bus: MemoryBus,
 }
 
@@ -154,9 +173,51 @@ impl CPU {
                     JumpTest::Always => true
                 };
                 self.jump(jump_condition)  
+            },
+            Instruction::LD(load_type) => {
+                match load_type {
+                    LoadType::Byte(target, source) => {
+                        let source_value = match source {
+                          LoadByteSource::A => self.registers.a,
+                          LoadByteSource::D8 => self.read_next_byte(),
+                          LoadByteSource::HLI => self.bus.read_byte(self.registers.get_hl()),
+                          _ => { panic!("TODO: implement other sources") }
+                        };
+                        match target {
+                          LoadByteTarget::A => self.registers.a = source_value,
+                          LoadByteTarget::HLI => self.bus.write_byte(self.registers.get_hl(), source_value),
+                          _ => { panic!("TODO: implement other targets") }
+                        };
+                        match source {
+                          LoadByteSource::D8  => self.pc.wrapping_add(2),
+                          _                   => self.pc.wrapping_add(1),
+                        }
+                    }
+                    _ => { panic!("TODO: implement other load types") }
+                }
+            },
+            Instruction::PUSH(target) => {
+                let value = match target {
+                    StackTarget::BC => self.registers.get_bc(),
+                    _ => { panic!("TODO: support more targets" )}
+                };
+                self.push(value);
+                self.pc.wrapping_add(1)
             }
-            _ => { /* TODO: support more instructions */ }
+            _ => { panic!("TODO: support more instructions") }
         }
+    }
+
+    fn push(&mut self, value: u16) {
+        self.sp = self.sp.wrapping_sub(1);
+        self.bus.write_byte(self.sp, ((value & 0xFF00) >> 8) as u8);
+
+        self.sp = self.sp.wrapping_sub(1);
+        self.bus.write_byte(self.sp, (value & 0xFF) as u8);
+    }
+
+    fn read_next_byte(&self) -> u8 {
+        self.bus.read_byte(self.pc + 1)
     }
     
     fn jump(&self, should_jump: bool) -> u16 {
