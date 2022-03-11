@@ -1,27 +1,16 @@
-struct MemoryBus {
-    memory: [u8; 0xFFFF]
-}
-
-impl MemoryBus {
-    fn read_byte(&self, address: u16) -> u8 {
-        self.memory[address as usize]
-    }
-    fn write_byte(&self, addr: u16, byte: u8) {
-        self.memory[addr as usize] = byte
-    }
-}
-
 struct CPU { 
     registers: Registers,
     pc: u16,
     sp: u16,
     bus: MemoryBus,
     is_halted: bool,
+    timer: Timer
 }
 
 // TODO: jump by 2 if executing prefix instr?
 
 impl CPU {
+    // TODO: implement new instance creation for each struct
     fn step(&mut self) {
         let mut instruction_byte = self.bus.read_byte(self.pc);
         let prefixed = instruction_byte == 0xCB;
